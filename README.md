@@ -155,6 +155,9 @@ please [open an issue](https://github.com/rtnk/homebrew-tap/issues).
      formula's Java.
 5. After merging, users get the version with `brew update && brew upgrade tapcue`.
 
+**Public install** runs the commands above against the tap on github.com every Monday and on demand
+(Actions → Public install → Run workflow), so a broken Release or dependency shows up without a change in the tap.
+
 Locally, the same checks are:
 
 ```sh
