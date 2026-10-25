@@ -35,6 +35,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Start booting a simulator
+        # A fresh simulator spends minutes in its first-boot data migration (6:43 in run 40223420616), and the iOS driver
+        # then timed out; booting now lets that run while TapCue is installed and its driver is built.
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
+          print(next(d["udid"] for r in ios for d in devices[r] if d["name"].startswith("iPhone")))')"
+          echo "simulator: $udid"
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+
       - name: Tap the checkout and install
         run: |
           .github/scripts/tap-checkout.sh
@@ -77,17 +90,12 @@ jobs:
 
       - name: UI hierarchy of a booted simulator
         env:
-          MAESTRO_DRIVER_STARTUP_TIMEOUT: 240000
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 480000
         run: |
           unset JAVA_HOME
-          udid="$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
-          print(next(d["udid"] for r in ios for d in devices[r] if d["name"].startswith("iPhone")))')"
-          echo "simulator: $udid"
-          xcrun simctl bootstatus "$udid" -b
-          tapcue --device "$udid" hierarchy > reports/hierarchy.json
+          echo "simulator: $SIMULATOR"
+          xcrun simctl bootstatus "$SIMULATOR" -b
+          tapcue --device "$SIMULATOR" hierarchy > reports/hierarchy.json
           grep -q '"attributes"' reports/hierarchy.json
           echo "hierarchy: $(wc -c < reports/hierarchy.json) bytes"
 
