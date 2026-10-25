@@ -1,8 +1,8 @@
 #!/bin/bash
-# Points Formula/tapcue.rb at a TapCue GitHub Release (used by .github/workflows/update-formula.yml).
+# Points Formula/tapcue.rb at a TapCue GitHub Release (used by .github/workflows/update-formula-tapcue.yml).
 #
-#   VERSION=X.Y.Z .github/scripts/update-formula.sh     # that Release
-#   .github/scripts/update-formula.sh                   # the latest stable Release
+#   VERSION=X.Y.Z .github/scripts/update-formula-tapcue.sh     # that Release
+#   .github/scripts/update-formula-tapcue.sh                   # the latest stable Release
 #
 # Refuses drafts, pre-releases, tags other than vMAJOR.MINOR.PATCH and versions lower than the formula's; the formula's
 # own version is "up to date" (action=skip). Otherwise it downloads the archive and SHA256SUMS and requires the same

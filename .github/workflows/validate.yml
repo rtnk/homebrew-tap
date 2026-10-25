@@ -6,7 +6,7 @@
 #              differs, install, brew test, tapcue in PATH, --version equals the formula version, --help, Java from
 #              openjdk@21 without JAVA_HOME, an older JAVA_HOME is refused, no Maestro needed, uninstall
 #   intel      macOS 15 Intel: the formula refuses to install (the release archive is Apple silicon only)
-#   update-script  tests of .github/scripts/update-formula.sh (used by update-formula.yml) on fake Releases
+#   update-script  tests of .github/scripts/update-formula-tapcue.sh (used by update-formula-tapcue.yml) on fake Releases
 #
 # Nothing here needs a secret: the formula and the TapCue Releases are public.
 name: Validate
@@ -55,7 +55,7 @@ jobs:
         run: brew audit --strict --online --formula "$FORMULA"
 
   update-script:
-    name: Tests of the update-formula script
+    name: Tests of the update-formula-tapcue script
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,8 +64,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: update-formula.sh on fake Releases
-        run: .github/scripts/test-update-formula.sh
+      - name: update-formula-tapcue.sh on fake Releases
+        run: .github/scripts/test-update-formula-tapcue.sh
 
   install:
     name: Install, test and uninstall (${{ matrix.os }})

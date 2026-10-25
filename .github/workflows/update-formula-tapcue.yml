@@ -1,7 +1,7 @@
 # Opens a pull request that points Formula/tapcue.rb at a TapCue Release. Run by hand only:
 # Actions → Update formula TapCue → Run workflow (version empty = the latest stable Release).
 #
-#   .github/scripts/update-formula.sh picks and checks the Release (stable, vMAJOR.MINOR.PATCH, newer than the formula,
+#   .github/scripts/update-formula-tapcue.sh picks and checks the Release (stable, vMAJOR.MINOR.PATCH, newer than the formula,
 #   one SHA-256 from the download, SHA256SUMS and GitHub's digest) and rewrites url and sha256; then this workflow
 #   commits to bump/tapcue-<version>, opens the PR to main and starts Validate and Smoke on that branch.
 #
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: update-formula
+  group: update-formula-tapcue
   cancel-in-progress: false
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
-        run: .github/scripts/update-formula.sh
+        run: .github/scripts/update-formula-tapcue.sh
 
       - name: No pull request or branch for this version yet
         id: existing

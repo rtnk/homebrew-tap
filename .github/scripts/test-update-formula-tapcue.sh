@@ -1,11 +1,11 @@
 #!/bin/bash
-# Tests of update-formula.sh on fake Releases (file:// assets, no network): a correct bump, the formula's own version,
+# Tests of update-formula-tapcue.sh on fake Releases (file:// assets, no network): a correct bump, the formula's own version,
 # an older version, a draft, a pre-release, a bad tag, a requested version that differs, a missing asset, and the three
 # checksum sources disagreeing. Each case runs on a copy of Formula/tapcue.rb.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-script="$root/.github/scripts/update-formula.sh"
+script="$root/.github/scripts/update-formula-tapcue.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
