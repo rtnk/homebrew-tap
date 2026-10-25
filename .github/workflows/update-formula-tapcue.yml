@@ -1,0 +1,111 @@
+# Opens a pull request that points Formula/tapcue.rb at a TapCue Release. Run by hand only:
+# Actions → Update formula TapCue → Run workflow (version empty = the latest stable Release).
+#
+#   .github/scripts/update-formula-tapcue.sh picks and checks the Release (stable, vMAJOR.MINOR.PATCH, newer than the formula,
+#   one SHA-256 from the download, SHA256SUMS and GitHub's digest) and rewrites url and sha256; then this workflow
+#   commits to bump/tapcue-<version>, opens the PR to main and starts Validate and Smoke TapCue on that branch.
+#
+# GITHUB_TOKEN only, no other secret. Its pull requests do not trigger pull_request workflows, so the checks are started
+# with workflow_dispatch (which GITHUB_TOKEN may do); they report on the PR's head commit. Nothing is pushed to main
+# and nothing is merged. Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
+name: Update formula TapCue
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'TapCue version X.Y.Z (empty: the latest stable Release)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-formula-tapcue
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update the tapcue formula
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Select and check the Release, rewrite the formula
+        id: plan
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/update-formula-tapcue.sh
+
+      - name: No pull request or branch for this version yet
+        id: existing
+        if: steps.plan.outputs.action == 'update'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: |
+          pr="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')"
+          if [ -n "$pr" ]; then
+            echo "::notice::A pull request for this version is already open: $pr"
+            echo "open=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "::error::Branch $BRANCH exists without an open pull request; delete it and run again."
+            exit 1
+          fi
+          echo "open=false" >> "$GITHUB_OUTPUT"
+
+      - name: Formula syntax
+        if: steps.plan.outputs.action == 'update' && steps.existing.outputs.open == 'false'
+        run: |
+          ruby -c Formula/tapcue.rb
+          git diff
+
+      - name: Commit, push and open the pull request
+        if: steps.plan.outputs.action == 'update' && steps.existing.outputs.open == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          SHA256: ${{ steps.plan.outputs.sha256 }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -qam "tapcue $VERSION"
+          git push origin "$BRANCH"
+          cat > "$RUNNER_TEMP/body.md" <<EOF
+          Points the formula at [TapCue v$VERSION](https://github.com/rtnk/TapCue/releases/tag/v$VERSION).
+
+          - \`url\`: \`https://github.com/rtnk/TapCue/releases/download/v$VERSION/tapcue-$VERSION-macos-arm64.zip\`
+          - \`sha256\`: \`$SHA256\` (the same in the download, the Release's \`SHA256SUMS\` and GitHub's asset digest)
+
+          Opened by [Update formula TapCue]($RUN_URL), run by $ACTOR. Validate and Smoke TapCue were started on this branch with
+          workflow_dispatch; merge only when both are green (Validate also upgrades from the formula on main).
+          EOF
+          gh pr create --base main --head "$BRANCH" --title "tapcue $VERSION" --body-file "$RUNNER_TEMP/body.md" \
+            | tee "$RUNNER_TEMP/pr.txt"
+          echo "### Pull request: $(cat "$RUNNER_TEMP/pr.txt")" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start Validate and Smoke TapCue on the branch
+        if: steps.plan.outputs.action == 'update' && steps.existing.outputs.open == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: |
+          gh workflow run validate.yml --ref "$BRANCH"
+          gh workflow run smoke-tapcue.yml --ref "$BRANCH"

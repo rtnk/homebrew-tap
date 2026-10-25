@@ -1,13 +1,13 @@
 # Functional smoke test of the Homebrew-installed TapCue on the formula's Java (openjdk@21), beyond --version and --help:
 # flow syntax check, the MCP server over STDIO, the iOS Simulator driver built from source with Xcode and a UI hierarchy
 # read from a booted simulator. Runs when the formula changes and on demand; no flows are run on a device.
-name: Smoke
+name: Smoke TapCue
 
 on:
   pull_request:
     paths:
       - Formula/tapcue.rb
-      - .github/workflows/smoke.yml
+      - .github/workflows/smoke-tapcue.yml
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Start booting a simulator
+        # A fresh simulator spends minutes in its first-boot data migration (6:43 in run 40223420616), and the iOS driver
+        # then timed out; booting now lets that run while TapCue is installed and its driver is built.
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
+          print(next(d["udid"] for r in ios for d in devices[r] if d["name"].startswith("iPhone")))')"
+          echo "simulator: $udid"
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
 
       - name: Tap the checkout and install
         run: |
@@ -77,17 +90,12 @@ jobs:
 
       - name: UI hierarchy of a booted simulator
         env:
-          MAESTRO_DRIVER_STARTUP_TIMEOUT: 240000
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 480000
         run: |
           unset JAVA_HOME
-          udid="$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
-          print(next(d["udid"] for r in ios for d in devices[r] if d["name"].startswith("iPhone")))')"
-          echo "simulator: $udid"
-          xcrun simctl bootstatus "$udid" -b
-          tapcue --device "$udid" hierarchy > reports/hierarchy.json
+          echo "simulator: $SIMULATOR"
+          xcrun simctl bootstatus "$SIMULATOR" -b
+          tapcue --device "$SIMULATOR" hierarchy > reports/hierarchy.json
           grep -q '"attributes"' reports/hierarchy.json
           echo "hierarchy: $(wc -c < reports/hierarchy.json) bytes"
 
@@ -99,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: smoke-reports
+          name: smoke-tapcue-reports
           path: reports
           retention-days: 14
           if-no-files-found: warn
