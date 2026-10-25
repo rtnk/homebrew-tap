@@ -6,6 +6,7 @@
 #              differs, install, brew test, tapcue in PATH, --version equals the formula version, --help, Java from
 #              openjdk@21 without JAVA_HOME, an older JAVA_HOME is refused, no Maestro needed, uninstall
 #   intel      macOS 15 Intel: the formula refuses to install (the release archive is Apple silicon only)
+#   update-script  tests of .github/scripts/update-formula.sh (used by update-formula.yml) on fake Releases
 #
 # Nothing here needs a secret: the formula and the TapCue Releases are public.
 name: Validate
@@ -52,6 +53,19 @@ jobs:
 
       - name: brew audit
         run: brew audit --strict --online --formula "$FORMULA"
+
+  update-script:
+    name: Tests of the update-formula script
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: update-formula.sh on fake Releases
+        run: .github/scripts/test-update-formula.sh
 
   install:
     name: Install, test and uninstall (${{ matrix.os }})
@@ -129,9 +143,10 @@ jobs:
           brew developer off
 
       - name: Upgrade from the formula on the base branch
-        if: github.event_name == 'pull_request'
+        # Pull requests, and the bump/* branches Update formula starts this workflow on by workflow_dispatch.
+        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/bump/')
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
         run: |
           git fetch --no-tags origin "$BASE_REF"
           if ! git cat-file -e "origin/$BASE_REF:Formula/tapcue.rb" 2>/dev/null; then
