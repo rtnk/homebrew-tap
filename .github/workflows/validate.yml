@@ -162,7 +162,10 @@ jobs:
           test "$(brew list --versions tapcue)" = "tapcue $VERSION"
 
       - name: brew test
-        run: brew test --verbose --formula "$FORMULA"
+        run: |
+          brew test --verbose "$FORMULA"
+          # brew test is a developer command and turns developer mode on; the remaining steps run as a user's brew does.
+          brew developer off
 
       - name: tapcue in PATH
         run: |
