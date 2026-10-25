@@ -169,7 +169,8 @@ jobs:
       - name: tapcue --version equals the formula version
         run: |
           tapcue --version | tee "$RUNNER_TEMP/version.txt"
-          test "$(tail -n 1 "$RUNNER_TEMP/version.txt")" = "tapcue $VERSION"
+          # The first line is "tapcue <version>"; the second one is the attribution to Maestro.
+          test "$(head -n 1 "$RUNNER_TEMP/version.txt")" = "tapcue $VERSION"
 
       - name: tapcue --help
         run: |
