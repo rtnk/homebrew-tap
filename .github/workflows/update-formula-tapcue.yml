@@ -3,7 +3,7 @@
 #
 #   .github/scripts/update-formula-tapcue.sh picks and checks the Release (stable, vMAJOR.MINOR.PATCH, newer than the formula,
 #   one SHA-256 from the download, SHA256SUMS and GitHub's digest) and rewrites url and sha256; then this workflow
-#   commits to bump/tapcue-<version>, opens the PR to main and starts Validate and Smoke on that branch.
+#   commits to bump/tapcue-<version>, opens the PR to main and starts Validate and Smoke TapCue on that branch.
 #
 # GITHUB_TOKEN only, no other secret. Its pull requests do not trigger pull_request workflows, so the checks are started
 # with workflow_dispatch (which GITHUB_TOKEN may do); they report on the PR's head commit. Nothing is pushed to main
@@ -94,18 +94,18 @@ jobs:
           - \`url\`: \`https://github.com/rtnk/TapCue/releases/download/v$VERSION/tapcue-$VERSION-macos-arm64.zip\`
           - \`sha256\`: \`$SHA256\` (the same in the download, the Release's \`SHA256SUMS\` and GitHub's asset digest)
 
-          Opened by [Update formula TapCue]($RUN_URL), run by $ACTOR. Validate and Smoke were started on this branch with
+          Opened by [Update formula TapCue]($RUN_URL), run by $ACTOR. Validate and Smoke TapCue were started on this branch with
           workflow_dispatch; merge only when both are green (Validate also upgrades from the formula on main).
           EOF
           gh pr create --base main --head "$BRANCH" --title "tapcue $VERSION" --body-file "$RUNNER_TEMP/body.md" \
             | tee "$RUNNER_TEMP/pr.txt"
           echo "### Pull request: $(cat "$RUNNER_TEMP/pr.txt")" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Start Validate and Smoke on the branch
+      - name: Start Validate and Smoke TapCue on the branch
         if: steps.plan.outputs.action == 'update' && steps.existing.outputs.open == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.plan.outputs.branch }}
         run: |
           gh workflow run validate.yml --ref "$BRANCH"
-          gh workflow run smoke.yml --ref "$BRANCH"
+          gh workflow run smoke-tapcue.yml --ref "$BRANCH"

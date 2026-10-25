@@ -142,17 +142,17 @@ please [open an issue](https://github.com/rtnk/homebrew-tap/issues).
      GitHub's asset digest;
    - it changes `url` and `sha256` in [`Formula/tapcue.rb`](Formula/tapcue.rb), pushes the branch
      `bump/tapcue-X.Y.Z` and opens a pull request to `main`. If that pull request is already open, it does nothing;
-   - it starts **Validate** and **Smoke** on that branch (a pull request opened by `GITHUB_TOKEN` does not start them
+   - it starts **Validate** and **Smoke TapCue** on that branch (a pull request opened by `GITHUB_TOKEN` does not start them
      itself). Their results show on the pull request.
 
    It uses only `GITHUB_TOKEN`; the repository setting *Settings → Actions → General → Allow GitHub Actions to create
    and approve pull requests* must be on.
-3. Merge the pull request when Validate and Smoke are green:
+3. Merge the pull request when Validate and Smoke TapCue are green:
    - **Validate** runs `ruby -c`, `brew style` and `brew audit --strict --online`. On macOS 15 and 26 it checks
      integrity (formula == `SHA256SUMS` == download) and that a wrong checksum is rejected, upgrades from the formula
      on `main`, installs, runs `brew test`, checks PATH, `--version`, `--help` and Java, and uninstalls. It also checks
      that installation is refused on Intel.
-   - **Smoke** runs `check-syntax`, the MCP server, the iOS Simulator driver build and a simulator UI hierarchy with the
+   - **Smoke TapCue** runs `check-syntax`, the MCP server, the iOS Simulator driver build and a simulator UI hierarchy with the
      formula's Java.
 4. After merging, users get the version with `brew update && brew upgrade tapcue`.
 
@@ -166,8 +166,8 @@ curl -fsSLO "https://github.com/rtnk/TapCue/releases/download/v$V/tapcue-$V-maco
 shasum -a 256 -c SHA256SUMS
 ```
 
-**Public install** runs the Installation, Verify, Update and Uninstall commands against the tap on github.com every Monday and on demand
-(Actions → Public install → Run workflow), so a broken Release or dependency shows up without a change in the tap.
+**Public install TapCue** runs the Installation, Verify, Update and Uninstall commands against the tap on github.com every Monday and on demand
+(Actions → Public install TapCue → Run workflow), so a broken Release or dependency shows up without a change in the tap.
 
 Locally, the same checks are:
 
@@ -181,7 +181,7 @@ brew install --formula rtnk/tap/tapcue && brew test rtnk/tap/tapcue
 ### Changing the Java version
 
 The formula depends on `openjdk@21` (`depends_on` and `Language::Java.overridable_java_home_env("21")`). Change both
-together, and let **Smoke** pass before merging. Homebrew deprecates `openjdk@21` on 2028-09-30.
+together, and let **Smoke TapCue** pass before merging. Homebrew deprecates `openjdk@21` on 2028-09-30.
 
 ## License
 

@@ -1,7 +1,7 @@
 # The README's commands, run as a user runs them: the tap is cloned from github.com (the main branch), not from this
 # checkout, on a runner without TapCue or Maestro. Weekly and on demand, so a Release or dependency that stops working
 # for users shows up even when nothing in the tap changes; also on pull requests that change this workflow.
-name: Public install
+name: Public install TapCue
 
 on:
   schedule:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - .github/workflows/public-install.yml
+      - .github/workflows/public-install-tapcue.yml
 
 permissions:
   contents: read

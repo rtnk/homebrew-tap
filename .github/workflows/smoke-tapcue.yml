@@ -1,13 +1,13 @@
 # Functional smoke test of the Homebrew-installed TapCue on the formula's Java (openjdk@21), beyond --version and --help:
 # flow syntax check, the MCP server over STDIO, the iOS Simulator driver built from source with Xcode and a UI hierarchy
 # read from a booted simulator. Runs when the formula changes and on demand; no flows are run on a device.
-name: Smoke
+name: Smoke TapCue
 
 on:
   pull_request:
     paths:
       - Formula/tapcue.rb
-      - .github/workflows/smoke.yml
+      - .github/workflows/smoke-tapcue.yml
   workflow_dispatch:
 
 permissions:
@@ -99,7 +99,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: smoke-reports
+          name: smoke-tapcue-reports
           path: reports
           retention-days: 14
           if-no-files-found: warn
