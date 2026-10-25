@@ -116,14 +116,17 @@ jobs:
           brew tap-new --no-git local/negative > /dev/null
           tap="$(brew --repository local/negative)"
           sed -E 's/sha256 "[0-9a-f]{64}"/sha256 "0000000000000000000000000000000000000000000000000000000000000000"/' Formula/tapcue.rb > "$tap/Formula/tapcue.rb"
+          # The log is shown indented: brew prints its errors as ::error workflow commands, which would annotate the run.
           if brew fetch --formula local/negative/tapcue > "$RUNNER_TEMP/negative.log" 2>&1; then
-            cat "$RUNNER_TEMP/negative.log"
+            sed 's/^/  | /' "$RUNNER_TEMP/negative.log"
             echo "a wrong sha256 was accepted"
             exit 1
           fi
-          cat "$RUNNER_TEMP/negative.log"
-          grep -qi "mismatch" "$RUNNER_TEMP/negative.log"
+          sed 's/^/  | /' "$RUNNER_TEMP/negative.log"
+          grep -Eqi "different checksum|checksum mismatch" "$RUNNER_TEMP/negative.log"
           brew untap local/negative
+          # tap-new turned developer mode on; the remaining steps run as a user's brew does.
+          brew developer off
 
       - name: Upgrade from the formula on the base branch
         if: github.event_name == 'pull_request'
