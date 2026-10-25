@@ -1,0 +1,105 @@
+# Functional smoke test of the Homebrew-installed TapCue on the formula's Java (openjdk@21), beyond --version and --help:
+# flow syntax check, the MCP server over STDIO, the iOS Simulator driver built from source with Xcode and a UI hierarchy
+# read from a booted simulator. Runs when the formula changes and on demand; no flows are run on a device.
+name: Smoke
+
+on:
+  pull_request:
+    paths:
+      - Formula/tapcue.rb
+      - .github/workflows/smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_ANALYTICS: '1'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_ENV_HINTS: '1'
+  FORMULA: rtnk/tap/tapcue
+
+jobs:
+  ios:
+    name: CLI, MCP and iOS Simulator on the formula's Java (macos-26)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tap the checkout and install
+        run: |
+          .github/scripts/tap-checkout.sh
+          brew install --formula "$FORMULA"
+          # Every step below runs without the runner's JAVA_HOME, so the launcher uses the formula's openjdk@21.
+          echo "JAVA_HOME=" >> "$GITHUB_ENV"
+          mkdir -p reports
+
+      - name: Java used by tapcue
+        run: |
+          unset JAVA_HOME
+          "$(brew --prefix openjdk@21)/bin/java" -version 2>&1 | tee reports/java.txt
+          grep -q 'version "21' reports/java.txt
+
+      - name: check-syntax
+        run: |
+          unset JAVA_HOME
+          mkdir -p project/.tapcue
+          printf 'appId: com.example\n---\n- launchApp\n' > project/.tapcue/flow.yaml
+          tapcue check-syntax project/.tapcue/flow.yaml
+
+      - name: MCP server over STDIO
+        run: |
+          unset JAVA_HOME
+          reply="$(printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cheat_sheet","arguments":{}}}' \
+            | tapcue mcp)"
+          echo "$reply" | head -c 600; echo
+          grep -q '"name":"tapcue"' <<<"$reply"
+          grep -q '"id":2,"result"' <<<"$reply"
+
+      - name: Build the iOS Simulator driver
+        run: |
+          unset JAVA_HOME
+          xcodebuild -version
+          tapcue driver-setup --simulator
+          products="$HOME/.tapcue/maestro-iphonesimulator-driver-build/driver-iPhoneSimulator/Build/Products"
+          test -d "$products/Debug-iphonesimulator/maestro-driver-iosUITests-Runner.app"
+
+      - name: UI hierarchy of a booted simulator
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 240000
+        run: |
+          unset JAVA_HOME
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
+          print(next(d["udid"] for r in ios for d in devices[r] if d["name"].startswith("iPhone")))')"
+          echo "simulator: $udid"
+          xcrun simctl bootstatus "$udid" -b
+          tapcue --device "$udid" hierarchy > reports/hierarchy.json
+          grep -q '"attributes"' reports/hierarchy.json
+          echo "hierarchy: $(wc -c < reports/hierarchy.json) bytes"
+
+      - name: Show the iOS driver build log
+        if: failure()
+        run: tail -n 60 "$HOME/.tapcue/maestro-iphonesimulator-driver-build/output.log" || true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-reports
+          path: reports
+          retention-days: 14
+          if-no-files-found: warn

@@ -1,0 +1,252 @@
+# Validates the tap's formulae on every pull request and push to main.
+#
+#   lint       ruby -c, brew style, brew audit --strict --online
+#   install    Apple silicon, macOS 15 and 26: integrity of the download (formula sha256 == SHA256SUMS of the Release ==
+#              the cached file; a wrong sha256 is rejected), upgrade from the formula on the base branch when its version
+#              differs, install, brew test, tapcue in PATH, --version equals the formula version, --help, Java from
+#              openjdk@21 without JAVA_HOME, an older JAVA_HOME is refused, no Maestro needed, uninstall
+#   intel      macOS 15 Intel: the formula refuses to install (the release archive is Apple silicon only)
+#
+# Nothing here needs a secret: the formula and the TapCue Releases are public.
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_ANALYTICS: '1'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_ENV_HINTS: '1'
+  FORMULA: rtnk/tap/tapcue
+
+jobs:
+  lint:
+    name: Syntax, style and audit
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tap the checkout
+        run: .github/scripts/tap-checkout.sh
+
+      - name: Ruby syntax
+        run: for f in Formula/*.rb; do ruby -c "$f"; done
+
+      - name: brew style
+        run: brew style --formula rtnk/tap/tapcue
+
+      - name: brew audit
+        run: brew audit --strict --online --formula "$FORMULA"
+
+  install:
+    name: Install, test and uninstall (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Runner
+        run: |
+          sw_vers
+          uname -m
+          test "$(uname -m)" = arm64
+          brew --version
+
+      - name: No Maestro on the runner
+        run: |
+          test -z "$(command -v maestro || true)"
+          if brew list --formula maestro > /dev/null 2>&1; then exit 1; fi
+          test ! -e "$HOME/.maestro"
+
+      - name: Tap the checkout
+        run: .github/scripts/tap-checkout.sh
+
+      - name: Formula facts
+        run: |
+          brew info --json=v2 --formula "$FORMULA" > "$RUNNER_TEMP/info.json"
+          version="$(jq -r '.formulae[0].versions.stable' "$RUNNER_TEMP/info.json")"
+          url="$(jq -r '.formulae[0].urls.stable.url' "$RUNNER_TEMP/info.json")"
+          sha="$(jq -r '.formulae[0].urls.stable.checksum' "$RUNNER_TEMP/info.json")"
+          echo "version=$version url=$url sha256=$sha"
+          test -n "$version" && test "$version" != null
+          {
+            echo "VERSION=$version"
+            echo "URL=$url"
+            echo "SHA=$sha"
+          } >> "$GITHUB_ENV"
+
+      - name: Integrity of the download
+        run: |
+          # The formula's checksum must equal the SHA256SUMS published next to the archive in the same Release.
+          sums_url="${URL%/*}/SHA256SUMS"
+          curl -fsSL --retry 3 "$sums_url" -o "$RUNNER_TEMP/SHA256SUMS"
+          cat "$RUNNER_TEMP/SHA256SUMS"
+          grep -qx "$SHA  ${URL##*/}" "$RUNNER_TEMP/SHA256SUMS"
+          # brew fetch verifies the checksum; the cached file must hash to it as well.
+          brew fetch --formula "$FORMULA"
+          cached="$(brew --cache --formula "$FORMULA")"
+          test "$(shasum -a 256 "$cached" | cut -d' ' -f1)" = "$SHA"
+
+      - name: A wrong sha256 is rejected
+        run: |
+          # The same formula with a different checksum in a throwaway tap: fetching the (cached) archive must fail.
+          brew tap-new --no-git local/negative > /dev/null
+          tap="$(brew --repository local/negative)"
+          sed -E 's/sha256 "[0-9a-f]{64}"/sha256 "0000000000000000000000000000000000000000000000000000000000000000"/' Formula/tapcue.rb > "$tap/Formula/tapcue.rb"
+          # The log is shown indented: brew prints its errors as ::error workflow commands, which would annotate the run.
+          if brew fetch --formula local/negative/tapcue > "$RUNNER_TEMP/negative.log" 2>&1; then
+            sed 's/^/  | /' "$RUNNER_TEMP/negative.log"
+            echo "a wrong sha256 was accepted"
+            exit 1
+          fi
+          sed 's/^/  | /' "$RUNNER_TEMP/negative.log"
+          grep -Eqi "different checksum|checksum mismatch" "$RUNNER_TEMP/negative.log"
+          brew untap local/negative
+          # tap-new turned developer mode on; the remaining steps run as a user's brew does.
+          brew developer off
+
+      - name: Upgrade from the formula on the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          if ! git cat-file -e "origin/$BASE_REF:Formula/tapcue.rb" 2>/dev/null; then
+            echo "::notice::No tapcue formula on $BASE_REF yet: upgrade not tested."
+            exit 0
+          fi
+          base_version="$(git show "origin/$BASE_REF:Formula/tapcue.rb" | sed -nE 's|^ *url ".*/tapcue-([0-9.]+)-macos-arm64\.zip"|\1|p')"
+          if [ "$base_version" = "$VERSION" ]; then
+            echo "::notice::The base branch has the same version ($VERSION): upgrade not tested."
+            exit 0
+          fi
+          head="$(git rev-parse HEAD)"
+          git checkout -q "origin/$BASE_REF" -- Formula/tapcue.rb
+          brew install --formula "$FORMULA"
+          tapcue --version | tee "$RUNNER_TEMP/base-version.txt"
+          grep -Fq "tapcue $base_version" "$RUNNER_TEMP/base-version.txt"
+          git checkout -q "$head" -- Formula/tapcue.rb
+          brew upgrade --formula "$FORMULA"
+          echo "UPGRADED=true" >> "$GITHUB_ENV"
+
+      - name: brew install
+        run: |
+          if [ "${UPGRADED:-}" = true ]; then
+            brew list --versions "$FORMULA"
+          else
+            brew install --formula "$FORMULA"
+          fi
+          test "$(brew list --versions tapcue)" = "tapcue $VERSION"
+
+      - name: brew test
+        run: |
+          brew test --verbose "$FORMULA"
+          # brew test is a developer command and turns developer mode on; the remaining steps run as a user's brew does.
+          brew developer off
+
+      - name: tapcue in PATH
+        run: |
+          command -v tapcue
+          test "$(command -v tapcue)" = "$(brew --prefix)/bin/tapcue"
+
+      - name: tapcue --version equals the formula version
+        run: |
+          tapcue --version | tee "$RUNNER_TEMP/version.txt"
+          # The first line is "tapcue <version>"; the second one is the attribution to Maestro.
+          test "$(head -n 1 "$RUNNER_TEMP/version.txt")" = "tapcue $VERSION"
+
+      - name: tapcue --help
+        run: |
+          tapcue --help | tee "$RUNNER_TEMP/help.txt"
+          grep -q "Usage:" "$RUNNER_TEMP/help.txt"
+
+      - name: Java from openjdk@21 when JAVA_HOME is unset
+        run: |
+          jdk="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
+          grep -F "$(brew --prefix openjdk@21)" "$(brew --prefix)/bin/tapcue"
+          "$jdk/bin/java" -version
+          env -u JAVA_HOME PATH="/usr/bin:/bin:/usr/sbin:/sbin" "$(brew --prefix)/bin/tapcue" --version
+          # The launcher's JVM, seen from the process table while the MCP server waits on STDIN.
+          (sleep 30 | env -u JAVA_HOME PATH="/usr/bin:/bin:/usr/sbin:/sbin" "$(brew --prefix)/bin/tapcue" mcp > /dev/null 2>&1 &)
+          for _ in $(seq 1 20); do
+            if pgrep -fl "maestro.cli.AppKt" > "$RUNNER_TEMP/jvm.txt"; then break; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/jvm.txt"
+          grep -F "$(brew --prefix)/" "$RUNNER_TEMP/jvm.txt" | grep -q "openjdk@21"
+          pkill -f "maestro.cli.AppKt" || true
+
+      - name: A JAVA_HOME older than 17 is refused
+        run: |
+          old="${JAVA_HOME_11_arm64:-${JAVA_HOME_11_X64:-}}"
+          if [ -z "$old" ]; then
+            echo "::notice::No Java 11 on this runner: not tested."
+            exit 0
+          fi
+          if JAVA_HOME="$old" tapcue --version > "$RUNNER_TEMP/old-java.txt" 2>&1; then
+            cat "$RUNNER_TEMP/old-java.txt"
+            echo "Java 11 was accepted"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/old-java.txt"
+          grep -q "Java 17 or higher is required" "$RUNNER_TEMP/old-java.txt"
+
+      - name: No Maestro installed or used
+        run: |
+          test -z "$(command -v maestro || true)"
+          test ! -e "$HOME/.maestro"
+
+      - name: brew uninstall
+        run: |
+          brew uninstall --formula "$FORMULA"
+          hash -r
+          test -z "$(command -v tapcue || true)"
+          if brew list --formula tapcue > /dev/null 2>&1; then exit 1; fi
+
+  intel:
+    name: Refused on Intel (macos-15-intel)
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tap the checkout
+        run: .github/scripts/tap-checkout.sh
+
+      - name: brew install fails with an architecture message
+        run: |
+          uname -m
+          if brew install --formula "$FORMULA" > "$RUNNER_TEMP/intel.log" 2>&1; then
+            cat "$RUNNER_TEMP/intel.log"
+            echo "tapcue installed on Intel"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/intel.log"
+          grep -Eqi "arm|apple silicon" "$RUNNER_TEMP/intel.log"
+          test -z "$(command -v tapcue || true)"
