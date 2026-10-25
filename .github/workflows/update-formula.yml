@@ -1,5 +1,5 @@
 # Opens a pull request that points Formula/tapcue.rb at a TapCue Release. Run by hand only:
-# Actions → Update formula → Run workflow (version empty = the latest stable Release).
+# Actions → Update formula TapCue → Run workflow (version empty = the latest stable Release).
 #
 #   .github/scripts/update-formula.sh picks and checks the Release (stable, vMAJOR.MINOR.PATCH, newer than the formula,
 #   one SHA-256 from the download, SHA256SUMS and GitHub's digest) and rewrites url and sha256; then this workflow
@@ -8,7 +8,7 @@
 # GITHUB_TOKEN only, no other secret. Its pull requests do not trigger pull_request workflows, so the checks are started
 # with workflow_dispatch (which GITHUB_TOKEN may do); they report on the PR's head commit. Nothing is pushed to main
 # and nothing is merged. Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
-name: Update formula
+name: Update formula TapCue
 
 on:
   workflow_dispatch:
@@ -94,7 +94,7 @@ jobs:
           - \`url\`: \`https://github.com/rtnk/TapCue/releases/download/v$VERSION/tapcue-$VERSION-macos-arm64.zip\`
           - \`sha256\`: \`$SHA256\` (the same in the download, the Release's \`SHA256SUMS\` and GitHub's asset digest)
 
-          Opened by [Update formula]($RUN_URL), run by $ACTOR. Validate and Smoke were started on this branch with
+          Opened by [Update formula TapCue]($RUN_URL), run by $ACTOR. Validate and Smoke were started on this branch with
           workflow_dispatch; merge only when both are green (Validate also upgrades from the formula on main).
           EOF
           gh pr create --base main --head "$BRANCH" --title "tapcue $VERSION" --body-file "$RUNNER_TEMP/body.md" \

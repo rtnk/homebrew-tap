@@ -134,7 +134,7 @@ please [open an issue](https://github.com/rtnk/homebrew-tap/issues).
 1. Release TapCue as described in
    [`docs/RELEASING.md`](https://github.com/rtnk/TapCue/blob/main/docs/RELEASING.md): the annotated tag `vX.Y.Z`
    publishes `tapcue-X.Y.Z-macos-arm64.zip` and `SHA256SUMS`.
-2. Run **Actions → Update formula → Run workflow** on `main`. Leave *version* empty for the latest stable Release,
+2. Run **Actions → Update formula TapCue → Run workflow** on `main`. Leave *version* empty for the latest stable Release,
    or enter `X.Y.Z`. The workflow runs only when started by hand:
    - it takes stable Releases only: no drafts or pre-releases, tags `vMAJOR.MINOR.PATCH`, never a version lower than
      the formula's; the formula's own version ends with "up to date" and changes nothing;
