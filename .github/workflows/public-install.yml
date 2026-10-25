@@ -1,0 +1,69 @@
+# The README's commands, run as a user runs them: the tap is cloned from github.com (the main branch), not from this
+# checkout, on a runner without TapCue or Maestro. Weekly and on demand, so a Release or dependency that stops working
+# for users shows up even when nothing in the tap changes; also on pull requests that change this workflow.
+name: Public install
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/public-install.yml
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_NO_ANALYTICS: '1'
+
+jobs:
+  install:
+    name: brew install rtnk/tap/tapcue (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Clean start
+        run: |
+          sw_vers
+          uname -m
+          test -z "$(command -v tapcue || true)"
+          test -z "$(command -v maestro || true)"
+          if brew tap | grep -qx rtnk/tap; then exit 1; fi
+
+      - name: Installation
+        run: brew install rtnk/tap/tapcue
+
+      - name: The tap comes from github.com
+        run: |
+          git -C "$(brew --repository rtnk/tap)" remote get-url origin | tee "$RUNNER_TEMP/remote.txt"
+          grep -Eq '^https://github.com/rtnk/homebrew-tap(\.git)?$' "$RUNNER_TEMP/remote.txt"
+          git -C "$(brew --repository rtnk/tap)" log --oneline -1
+
+      - name: Verify
+        run: |
+          # Without the runner's JAVA_HOME: the formula's openjdk@21.
+          unset JAVA_HOME
+          tapcue --version | tee "$RUNNER_TEMP/version.txt"
+          version="$(brew list --versions tapcue | cut -d' ' -f2)"
+          test "$(head -n 1 "$RUNNER_TEMP/version.txt")" = "tapcue $version"
+          tapcue --help > "$RUNNER_TEMP/help.txt"
+          grep -q "Usage:" "$RUNNER_TEMP/help.txt"
+          test "$(command -v tapcue)" = "$(brew --prefix)/bin/tapcue"
+
+      - name: Update
+        run: |
+          brew update
+          brew upgrade tapcue
+          brew list --versions tapcue
+
+      - name: Uninstall
+        run: |
+          brew uninstall tapcue
+          brew untap rtnk/tap
+          hash -r
+          test -z "$(command -v tapcue || true)"
